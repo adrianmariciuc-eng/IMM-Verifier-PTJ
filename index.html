@@ -100,6 +100,325 @@
     <script type="text/babel">
         const { useState, useCallback, useMemo, useEffect } = React;
 
+        // ═══════════════════════════════════════════════════════════
+        // ─── AUTH SYSTEM ───
+        // ═══════════════════════════════════════════════════════════
+
+        // SHA-256 hash function (browser native)
+        async function sha256(text) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(text);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Default admin account (password hash of "admin123")
+        const DEFAULT_USERS = [
+            { id: 1, username: "admin", passwordHash: "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9", role: "admin" }
+        ];
+
+        // Load users from localStorage or use defaults
+        function loadUsers() {
+            try {
+                const stored = localStorage.getItem("imm_users");
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch (e) {}
+            return DEFAULT_USERS;
+        }
+
+        function saveUsers(users) {
+            localStorage.setItem("imm_users", JSON.stringify(users));
+        }
+
+        // Auth hook
+        function useAuth() {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                try {
+                    const session = localStorage.getItem("imm_session");
+                    if (session) {
+                        const parsed = JSON.parse(session);
+                        const users = loadUsers();
+                        const user = users.find(u => u.id === parsed.id && u.username === parsed.username);
+                        if (user) setCurrentUser(user);
+                    }
+                } catch (e) {}
+                setLoading(false);
+            }, []);
+
+            const login = async (username, password) => {
+                const hash = await sha256(password);
+                const users = loadUsers();
+                const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === hash);
+                if (!user) throw new Error("Utilizator sau parolă incorectă.");
+                setCurrentUser(user);
+                localStorage.setItem("imm_session", JSON.stringify({ id: user.id, username: user.username }));
+                return user;
+            };
+
+            const logout = () => {
+                setCurrentUser(null);
+                localStorage.removeItem("imm_session");
+            };
+
+            return { currentUser, loading, login, logout };
+        }
+
+        // ─── Login Screen ───
+        function LoginScreen({ onLogin }) {
+            const [username, setUsername] = useState("");
+            const [password, setPassword] = useState("");
+            const [error, setError] = useState("");
+            const [isLoading, setIsLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError("");
+                setIsLoading(true);
+                try {
+                    await onLogin(username, password);
+                } catch (err) {
+                    setError(err.message);
+                }
+                setIsLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+                    <div className="w-full max-w-sm">
+                        <div className="text-center mb-8">
+                            <div className="inline-flex items-center gap-3 mb-4">
+                                <div className="p-3 rounded-xl bg-gradient-to-br from-accent to-orange-600 shadow-lg shadow-accent/20">
+                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                </div>
+                            </div>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">
+                                Verificare IMM <span className="text-accent">PTJ</span>
+                            </h1>
+                            <p className="text-sm text-textDim mt-2">Autentificați-vă pentru a continua</p>
+                        </div>
+                        <div className="bg-card rounded-2xl border border-border p-6 shadow-xl">
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-textDim uppercase mb-1.5 block font-medium tracking-wider">Utilizator</label>
+                                    <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors"
+                                        placeholder="username" autoFocus required />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-textDim uppercase mb-1.5 block font-medium tracking-wider">Parolă</label>
+                                    <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors"
+                                        placeholder="••••••••" required />
+                                </div>
+                                {error && (
+                                    <div className="bg-redDim border border-redBorder rounded-lg px-3 py-2 text-xs text-redCustom flex items-center gap-2">
+                                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        {error}
+                                    </div>
+                                )}
+                                <button type="submit" disabled={isLoading}
+                                    className="w-full px-8 py-2.5 bg-accent text-bg font-bold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 mt-2">
+                                    {isLoading ? "Se autentifică..." : "Autentificare"}
+                                </button>
+                            </form>
+                        </div>
+                        <p className="text-center text-textMuted text-xs mt-6">Contactați administratorul pentru a obține acces.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // ─── Admin Panel ───
+        function AdminPanel({ currentUser, onClose }) {
+            const [users, setUsers] = useState(loadUsers());
+            const [newUsername, setNewUsername] = useState("");
+            const [newPassword, setNewPassword] = useState("");
+            const [newRole, setNewRole] = useState("user");
+            const [msg, setMsg] = useState("");
+            const [msgType, setMsgType] = useState("success");
+
+            const showMsg = (text, type = "success") => {
+                setMsg(text);
+                setMsgType(type);
+                setTimeout(() => setMsg(""), 3000);
+            };
+
+            const addUser = async (e) => {
+                e.preventDefault();
+                if (!newUsername.trim() || !newPassword.trim()) {
+                    showMsg("Completați toate câmpurile.", "error");
+                    return;
+                }
+                if (newPassword.length < 4) {
+                    showMsg("Parola trebuie să aibă minim 4 caractere.", "error");
+                    return;
+                }
+                if (users.find(u => u.username.toLowerCase() === newUsername.toLowerCase())) {
+                    showMsg("Acest username există deja.", "error");
+                    return;
+                }
+                const hash = await sha256(newPassword);
+                const newUser = {
+                    id: Date.now(),
+                    username: newUsername.trim(),
+                    passwordHash: hash,
+                    role: newRole,
+                };
+                const updated = [...users, newUser];
+                setUsers(updated);
+                saveUsers(updated);
+                setNewUsername("");
+                setNewPassword("");
+                showMsg(`Utilizatorul "${newUser.username}" a fost adăugat.`);
+            };
+
+            const removeUser = (userId) => {
+                if (userId === currentUser.id) {
+                    showMsg("Nu vă puteți șterge propriul cont.", "error");
+                    return;
+                }
+                const user = users.find(u => u.id === userId);
+                const updated = users.filter(u => u.id !== userId);
+                setUsers(updated);
+                saveUsers(updated);
+                showMsg(`"${user.username}" a fost eliminat.`);
+            };
+
+            const toggleRole = (userId) => {
+                if (userId === currentUser.id) {
+                    showMsg("Nu vă puteți schimba propriul rol.", "error");
+                    return;
+                }
+                const updated = users.map(u => u.id === userId ? { ...u, role: u.role === "admin" ? "user" : "admin" } : u);
+                setUsers(updated);
+                saveUsers(updated);
+            };
+
+            const changePassword = async (userId) => {
+                const newPwd = prompt("Introduceți noua parolă (minim 4 caractere):");
+                if (!newPwd || newPwd.length < 4) {
+                    if (newPwd !== null) showMsg("Parola trebuie să aibă minim 4 caractere.", "error");
+                    return;
+                }
+                const hash = await sha256(newPwd);
+                const updated = users.map(u => u.id === userId ? { ...u, passwordHash: hash } : u);
+                setUsers(updated);
+                saveUsers(updated);
+                showMsg("Parola a fost schimbată.");
+            };
+
+            return (
+                <div className="min-h-screen bg-bg text-text p-4 md:p-8">
+                    <div className="max-w-3xl mx-auto">
+                        <div className="flex items-center justify-between mb-8">
+                            <h2 className="text-xl font-bold">
+                                <span className="text-accent">Panou Admin</span> <span className="text-textDim font-normal">— Gestionare utilizatori</span>
+                            </h2>
+                            <button onClick={onClose}
+                                className="px-4 py-2 bg-cardAlt border border-border rounded-lg text-sm text-textDim hover:text-text transition-colors">
+                                ← Înapoi la aplicație
+                            </button>
+                        </div>
+
+                        {/* Add User Form */}
+                        <div className="bg-card rounded-2xl border border-border p-6 shadow-xl mb-6">
+                            <h3 className="font-bold text-sm uppercase tracking-wider text-accent/80 mb-4">Adaugă utilizator nou</h3>
+                            <form onSubmit={addUser} className="flex gap-3 flex-wrap items-end">
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">Username</label>
+                                    <input type="text" value={newUsername} onChange={e => setNewUsername(e.target.value)}
+                                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors"
+                                        placeholder="utilizator_nou" />
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">Parolă</label>
+                                    <input type="text" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors"
+                                        placeholder="minim 4 caractere" />
+                                </div>
+                                <div className="min-w-[140px]">
+                                    <label className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">Rol</label>
+                                    <select value={newRole} onChange={e => setNewRole(e.target.value)}
+                                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors">
+                                        <option value="user">Utilizator</option>
+                                        <option value="admin">Administrator</option>
+                                    </select>
+                                </div>
+                                <button type="submit" className="px-6 py-2.5 bg-accent text-bg font-bold rounded-lg hover:opacity-90 transition-opacity">
+                                    + Adaugă
+                                </button>
+                            </form>
+                            {msg && (
+                                <div className={`mt-3 text-xs rounded-lg px-3 py-2 ${msgType === 'error' ? 'bg-redDim border border-redBorder text-redCustom' : 'bg-greenDim border border-greenBorder text-greenCustom'}`}>
+                                    {msg}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* User List */}
+                        <div className="bg-card rounded-2xl border border-border p-6 shadow-xl">
+                            <h3 className="font-bold text-sm uppercase tracking-wider text-blueCustom/80 mb-4">
+                                Utilizatori înregistrați ({users.length})
+                            </h3>
+                            <div className="space-y-2">
+                                {users.map(u => (
+                                    <div key={u.id} className="flex items-center justify-between bg-cardAlt rounded-xl border border-border p-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${u.role === 'admin' ? 'bg-accentDim text-accent' : 'bg-blueDim text-blueCustom'}`}>
+                                                {u.role === 'admin' ? 'A' : 'U'}
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-medium">{u.username}</div>
+                                                <div className="text-xs mt-0.5">
+                                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${u.role === 'admin' ? 'bg-accentDim text-accent border border-accentBorder' : 'bg-blueDim text-blueCustom border border-blueBorder'}`}>
+                                                        {u.role === 'admin' ? 'Administrator' : 'Utilizator'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 flex-wrap justify-end">
+                                            <button onClick={() => changePassword(u.id)}
+                                                className="px-3 py-1.5 text-xs bg-cardAlt border border-border rounded-lg text-textDim hover:text-text transition-colors">
+                                                Schimbă parola
+                                            </button>
+                                            <button onClick={() => toggleRole(u.id)}
+                                                className="px-3 py-1.5 text-xs bg-blueDim border border-blueBorder rounded-lg text-blueCustom hover:bg-blue-600/20 transition-colors">
+                                                {u.role === 'admin' ? 'Fă utilizator' : 'Fă admin'}
+                                            </button>
+                                            {u.id !== currentUser.id && (
+                                                <button onClick={() => removeUser(u.id)}
+                                                    className="px-3 py-1.5 text-xs bg-redDim border border-redBorder rounded-lg text-redCustom hover:bg-red-600/20 transition-colors">
+                                                    Elimină
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 p-4 bg-cardAlt rounded-xl border border-border">
+                            <p className="text-xs text-textMuted">
+                                <span className="text-accent font-bold">Notă:</span> Utilizatorii sunt salvați local în browser (localStorage).
+                                Fiecare browser/dispozitiv are propria listă de utilizatori. La prima accesare, contul implicit este <strong className="text-text">admin / admin123</strong>.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // ─── END AUTH SYSTEM ───
+        // ═══════════════════════════════════════════════════════════
+
         const EUR_RON = 4.97;
 
         // ─── Helpers ───
@@ -588,6 +907,104 @@
                 }
             };
 
+            // ─── Fetch financial data from ANAF API (via server proxy) ───
+            const fetchFromANAF = async (cui, targetEntId = null) => {
+                const cleanCui = String(cui).replace(/\D/g, '');
+                if (!cleanCui || cleanCui.length < 4) {
+                    alert("CUI invalid. Introduceți un CUI valid (minim 4 cifre).");
+                    return;
+                }
+
+                const years = ["2024", "2023", "2022"];
+                const results = [];
+                let companyName = "";
+                let fetchOk = false;
+
+                for (const year of years) {
+                    const url = `/api/anaf/bilant?an=${year}&cui=${cleanCui}`;
+                    let data = null;
+
+                    try {
+                        const resp = await fetch(url, {
+                            headers: { 'Accept': 'application/json' },
+                            signal: AbortSignal.timeout(10000)
+                        });
+                        if (resp.ok) {
+                            data = await resp.json();
+                            if (data && data.i) fetchOk = true;
+                        }
+                    } catch (e) {
+                        console.error(`ANAF fetch error ${year}:`, e);
+                    }
+
+                    if (!data || !data.i) {
+                        results.push(`${year}: Nu s-au găsit date`);
+                        continue;
+                    }
+
+                    if (data.deni) companyName = data.deni;
+
+                    const getIndicator = (code) => {
+                        const item = data.i.find(x => x.indicator === code);
+                        return item ? item.val_indicator : 0;
+                    };
+
+                    const activeImob = getIndicator("I1");
+                    const activeCirc = getIndicator("I2");
+                    const activeTotalLei = activeImob + activeCirc;
+                    const cifraAfaceriLei = getIndicator("I13");
+                    const employees = getIndicator("I20");
+
+                    const turnoverEUR = Math.round(cifraAfaceriLei / EUR_RON);
+                    const assetsEUR = Math.round(activeTotalLei / EUR_RON);
+
+                    if (targetEntId) {
+                        updateEnterprise(targetEntId, `employees${year}`, employees);
+                        updateEnterprise(targetEntId, `turnover${year}`, turnoverEUR);
+                        updateEnterprise(targetEntId, `assets${year}`, assetsEUR);
+                        if (companyName) updateEnterprise(targetEntId, "name", companyName);
+                    } else {
+                        setCompany(prev => ({
+                            ...prev,
+                            cui: cleanCui,
+                            name: companyName || prev.name,
+                            [`turnover${year}`]: turnoverEUR,
+                            [`assets${year}`]: assetsEUR,
+                            [`employees${year}`]: employees,
+                        }));
+                    }
+
+                    results.push(`${year}: CA ${cifraAfaceriLei.toLocaleString('ro-RO')} LEI → ${turnoverEUR.toLocaleString('ro-RO')} EUR | Active ${activeTotalLei.toLocaleString('ro-RO')} LEI → ${assetsEUR.toLocaleString('ro-RO')} EUR | Sal: ${employees}`);
+                }
+
+                if (!fetchOk) {
+                    alert("Nu s-au putut prelua datele de la ANAF.\n\nAlternative:\n1. Încărcați bilanțurile PDF descărcate de pe mfinante.gov.ro\n2. Introduceți datele manual");
+                    return;
+                }
+
+                alert(`✓ Date importate pentru CUI ${cleanCui}${companyName ? ` (${companyName})` : ''}\n\n${results.join('\n')}`);
+            };
+
+            const [cuiLoading, setCuiLoading] = useState(false);
+
+            const handleCuiFetch = async (targetEntId = null) => {
+                const cuiValue = targetEntId
+                    ? prompt("Introduceți CUI-ul firmei:")
+                    : company.cui;
+                if (!cuiValue) {
+                    alert("Introduceți CUI-ul firmei mai întâi.");
+                    return;
+                }
+                setCuiLoading(true);
+                try {
+                    await fetchFromANAF(cuiValue, targetEntId);
+                } catch (err) {
+                    console.error("ANAF fetch error:", err);
+                    alert("Eroare la preluarea datelor de la ANAF.");
+                }
+                setCuiLoading(false);
+            };
+
             const updateEnterprise = (id, field, value) => {
                 if (value === null || value === undefined) return;
                 setEnterprises(prev => prev.map(ent => ent.id === id ? { ...ent, [field]: value } : ent));
@@ -717,14 +1134,25 @@
                                     <div className="w-12 h-12 rounded-full bg-blueDim text-blueCustom flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
                                     </div>
-                                    <h3 className="font-bold text-sm mb-1 uppercase tracking-wider">Importă Datele din Excel sau PDF</h3>
+                                    <h3 className="font-bold text-sm mb-1 uppercase tracking-wider">Importă Datele Financiare</h3>
                                     <p className="text-xs text-textDim mb-4 max-w-xs">
-                                        Încarcă modelul oficial <strong>XLSX</strong> sau bilanțul <strong>PDF</strong> pentru auto-completare.
+                                        Preia automat de la <strong>ANAF</strong> după CUI, sau încarcă <strong>PDF / Excel</strong>.
                                     </p>
-                                    <label className="cursor-pointer px-8 py-3 bg-blueCustom text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blueCustom/20">
-                                        Încărcare Fișier (Excel / PDF)
-                                        <input type="file" accept=".xlsx, .xls, .pdf" multiple className="hidden" onChange={handleImport} />
-                                    </label>
+                                    <div className="flex gap-3 flex-wrap justify-center">
+                                        <button onClick={() => handleCuiFetch()} disabled={cuiLoading}
+                                            className="px-6 py-3 bg-accent text-bg text-xs font-bold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-accent/20 disabled:opacity-50 flex items-center gap-2">
+                                            {cuiLoading ? (
+                                                <><div className="w-4 h-4 border-2 border-bg border-t-transparent rounded-full animate-spin"></div> Se preia...</>
+                                            ) : (
+                                                <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Import după CUI</>
+                                            )}
+                                        </button>
+                                        <label className="cursor-pointer px-6 py-3 bg-blueCustom text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blueCustom/20">
+                                            Încarcă PDF / Excel
+                                            <input type="file" accept=".xlsx, .xls, .pdf" multiple className="hidden" onChange={handleImport} />
+                                        </label>
+                                    </div>
+                                    <p className="text-[10px] text-textMuted mt-3">Completați mai întâi câmpul CUI pentru import automat</p>
                                 </div>
 
                                 <div className="flex items-center gap-2 mb-4 text-blueCustom font-bold uppercase tracking-widest text-[10px]">
@@ -881,8 +1309,64 @@
             );
         }
 
+        // ─── App Wrapper with Auth Gate ───
+        function App() {
+            const { currentUser, loading, login, logout } = useAuth();
+            const [showAdmin, setShowAdmin] = useState(false);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-bg flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                            <p className="text-textDim text-sm">Se încarcă...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (!currentUser) {
+                return <LoginScreen onLogin={login} />;
+            }
+
+            if (showAdmin && currentUser.role === "admin") {
+                return <AdminPanel currentUser={currentUser} onClose={() => setShowAdmin(false)} />;
+            }
+
+            return (
+                <div>
+                    {/* Auth Top Bar */}
+                    <div className="bg-card border-b border-border px-4 py-2.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 text-xs">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${currentUser.role === 'admin' ? 'bg-accentDim text-accent' : 'bg-blueDim text-blueCustom'}`}>
+                                {currentUser.username.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-textDim">{currentUser.username}</span>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${currentUser.role === 'admin' ? 'bg-accentDim text-accent border border-accentBorder' : 'bg-blueDim text-blueCustom border border-blueBorder'}`}>
+                                {currentUser.role === 'admin' ? 'Admin' : 'Utilizator'}
+                            </span>
+                        </div>
+                        <div className="flex gap-2">
+                            {currentUser.role === "admin" && (
+                                <button onClick={() => setShowAdmin(true)}
+                                    className="text-xs px-3 py-1.5 bg-accentDim border border-accentBorder text-accent rounded-lg hover:bg-accent/20 transition-colors font-medium">
+                                    ⚙ Panou Admin
+                                </button>
+                            )}
+                            <button onClick={logout}
+                                className="text-xs px-3 py-1.5 bg-redDim border border-redBorder text-redCustom rounded-lg hover:bg-red-600/20 transition-colors font-medium">
+                                Deconectare
+                            </button>
+                        </div>
+                    </div>
+                    {/* Main App */}
+                    <IMMVerifier />
+                </div>
+            );
+        }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<IMMVerifier />);
+        root.render(<App />);
     </script>
 </body>
 
