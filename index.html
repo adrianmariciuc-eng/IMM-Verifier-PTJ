@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ro">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificare IMM PTJ</title>
+    <!-- React and Babel via CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- SheetJS for Excel Download -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Excel template data -->
+    <script src="template_data.js"></script>
+    <!-- PDF.js for PDF Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    </script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bg: "#0B1120",
+                        card: "#111827",
+                        cardAlt: "#1A2332",
+                        border: "#1E293B",
+                        accent: "#F59E0B",
+                        accentDim: "rgba(245,158,11,0.12)",
+                        accentBorder: "rgba(245,158,11,0.3)",
+                        greenCustom: "#10B981",
+                        greenDim: "rgba(16,185,129,0.12)",
+                        greenBorder: "rgba(16,185,129,0.3)",
+                        redCustom: "#EF4444",
+                        redDim: "rgba(239,68,68,0.12)",
+                        redBorder: "rgba(239,68,68,0.3)",
+                        blueCustom: "#3B82F6",
+                        blueDim: "rgba(59,130,246,0.12)",
+                        blueBorder: "rgba(59,130,246,0.3)",
+                        text: "#F1F5F9",
+                        textDim: "#94A3B8",
+                        textMuted: "#64748B",
+                    },
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/css">
+        body {
+            background-color: #0B1120;
+            color: #F1F5F9;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0B1120;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1E293B;
+            border-radius: 3px;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        .glass {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(30, 41, 59, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useCallback, useMemo, useEffect } = React;
+
+        const EUR_RON = 4.97;
+
+        // ─── Helpers ───
+        const fmt = (n) => n?.toLocaleString("ro-RO", { maximumFractionDigits: 2 }) ?? "—";
+        const fmtEur = (n) => n != null ? `€${fmt(n)}` : "—";
+        const fmtRon = (n) => n != null ? `${fmt(n)} RON` : "—";
+
+        // ─── Icons ───
+        const IconBuilding = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18z" /><path d="M6 12H4a2 2 0 0 0-2 2v8h4" /><path d="M18 9h2a2 2 0 0 1 2 2v11h-4" /><path d="M10 6h4" /><path d="M10 10h4" /><path d="M10 14h4" /><path d="M10 18h4" /></svg>;
+        const IconLink = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>;
+        const IconCheck = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5"><path d="M20 6 9 17l-5-5" /></svg>;
+        const IconX = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+        const IconAlert = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><circle cx="12" cy="17" r="1" /></svg>;
+        const IconPlus = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+        const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>;
+
+        // ─── Reusable Components ───
+        function Card({ children, className = "", glow }) {
+            return (
+                <div className={`bg-card rounded-xl border border-border p-6 ${className}`}
+                    style={glow ? { boxShadow: `0 0 20px ${glow}`, borderColor: glow } : {}}>
+                    {children}
+                </div>
+            );
+        }
+
+        function Badge({ color, children }) {
+            const colors = {
+                green: "bg-greenDim text-greenCustom border-greenBorder",
+                red: "bg-redDim text-redCustom border-redBorder",
+                accent: "bg-accentDim text-accent border-accentBorder",
+                blue: "bg-blueDim text-blueCustom border-blueBorder",
+            };
+            return (
+                <span className={`inline-flex items-center gap-1 border rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide ${colors[color] || colors.blue}`}>
+                    {children}
+                </span>
+            );
+        }
+
+        function NumberInput({ label, value, onChange, suffix, placeholder }) {
+            return (
+                <div className="flex-1 min-w-[160px]">
+                    <span className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">{label}</span>
+                    <div className="relative">
+                        <input type="number" step="any" value={value ?? ""} placeholder={placeholder || "0"}
+                            onChange={e => onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
+                            className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors font-mono"
+                        />
+                        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted text-xs pointer-events-none">{suffix}</span>}
+                    </div>
+                </div>
+            );
+        }
+
+        function SelectInput({ label, value, onChange, options }) {
+            return (
+                <div className="flex-1 min-w-[160px]">
+                    <span className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">{label}</span>
+                    <select value={value} onChange={e => onChange(e.target.value)}
+                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none cursor-pointer appearance-none focus:border-accent transition-colors"
+                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}>
+                        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                </div>
+            );
+        }
+
+        function TextInput({ label, value, onChange, placeholder }) {
+            return (
+                <div className="flex-1 min-w-[200px]">
+                    <span className="text-xs text-textDim uppercase mb-1 block font-medium tracking-wider">{label}</span>
+                    <input type="text" value={value} placeholder={placeholder}
+                        onChange={e => onChange(e.target.value)}
+                        className="bg-cardAlt border border-border rounded-lg text-text px-3.5 py-2.5 text-sm w-full outline-none focus:border-accent transition-colors"
+                    />
+                </div>
+            );
+        }
+
+        function StepIndicator({ steps, current, onNavigate }) {
+            return (
+                <div className="flex gap-0.5 mb-8">
+                    {steps.map((s, i) => {
+                        const active = i === current;
+                        const done = i < current;
+                        return (
+                            <button key={i} onClick={() => onNavigate(i)} className={`flex-1 p-3 transition-all flex items-center gap-2 justify-center border
+                                ${active ? 'bg-accentDim border-accentBorder' : done ? 'bg-greenDim border-greenBorder' : 'bg-cardAlt border-border'}
+                                ${i === 0 ? 'rounded-l-xl' : i === steps.length - 1 ? 'rounded-r-xl' : ''}`}>
+                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+                                    ${active ? 'bg-accent text-bg' : done ? 'bg-greenCustom text-bg' : 'bg-border text-textMuted'}`}>
+                                    {done ? "✓" : i + 1}
+                                </span>
+                                <span className={`text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis
+                                    ${active ? 'text-accent' : done ? 'text-greenCustom' : 'text-textMuted'}`}>
+                                    {s}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function EnterpriseRow({ ent, onChange, onRemove, showRemove, index }) {
+            const letter = String.fromCharCode(66 + index); // 0 -> B, 1 -> C...
+            return (
+                <div className="bg-cardAlt rounded-xl border border-border p-5 mb-4 relative">
+                    {showRemove && (
+                        <button onClick={onRemove} className="absolute top-3 right-3 bg-redDim border border-redBorder rounded-md w-7 h-7 flex items-center justify-center text-redCustom transition-opacity hover:opacity-80">
+                            <IconTrash />
+                        </button>
+                    )}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 text-blueCustom font-bold uppercase tracking-widest text-[10px]">
+                            <div className="w-5 h-5 rounded bg-blueCustom text-bg flex items-center justify-center text-[10px]">{letter}</div>
+                            Date financiare {letter}
+                        </div>
+                        <label className="flex items-center gap-1.5 cursor-pointer px-3 py-1 bg-blueDim text-blueCustom text-[10px] font-bold rounded-md hover:bg-blue-600/20 transition-colors border border-blueBorder/30">
+                            <IconPlus /> Importă Doc (PDF/XLSX)
+                            <input type="file" accept=".xlsx, .xls, .pdf" multiple className="hidden"
+                                onChange={(e) => window.handleEnterpriseImport(e, ent.id)} />
+                        </label>
+                    </div>
+
+                    <div className="flex gap-3 flex-wrap mb-6">
+                        <TextInput label="Nume întreprindere" value={ent.name} onChange={v => onChange("name", v)} placeholder="SC Exemplu SRL" />
+                        <SelectInput label="Tip relație" value={ent.type} onChange={v => onChange("type", v)}
+                            options={[
+                                { value: "linked", label: "Legată (>50%)" },
+                                { value: "partner", label: "Parteneră (25-50%)" },
+                            ]} />
+                        <NumberInput label="% participare" value={ent.percent} onChange={v => onChange("percent", v)} suffix="%" placeholder="51" />
+                    </div>
+
+                    <div className="space-y-4">
+                        {["2024", "2023", "2022"].map(year => (
+                            <div key={year} className="p-3 border border-border/30 rounded-lg bg-card/40 flex gap-4 flex-wrap items-end">
+                                <div className="text-[10px] font-bold text-textMuted uppercase mb-1 min-w-[50px]">{year}</div>
+                                <NumberInput label="Salariați" value={ent[`employees${year}`]} onChange={v => onChange(`employees${year}`, v)} />
+                                <NumberInput label="Cifră Afaceri (EUR)" value={ent[`turnover${year}`]} onChange={v => onChange(`turnover${year}`, v)} suffix="€" />
+                                <NumberInput label="Active Totale (EUR)" value={ent[`assets${year}`]} onChange={v => onChange(`assets${year}`, v)} suffix="€" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function IMMVerifier() {
+            const [step, setStep] = useState(0);
+            const steps = ["Clasificare", "Date companie", "Întreprinderi legate", "Verificare IMM"];
+
+            // Step 1 – Classification
+            const [classification, setClassification] = useState("autonomous");
+
+            // Step 2 – Company data (A)
+            const [company, setCompany] = useState({
+                name: "", cui: "",
+                employees2024: null, turnover2024: null, assets2024: null,
+                employees2023: null, turnover2023: null, assets2023: null,
+                employees2022: null, turnover2022: null, assets2022: null,
+            });
+
+            // Step 3 – Related enterprises
+            const [enterprises, setEnterprises] = useState([]);
+
+            const addEnterprise = () => setEnterprises(prev => [...prev, {
+                id: Date.now(), name: "", type: "linked", percent: null,
+                employees2024: null, turnover2024: null, assets2024: null,
+                employees2023: null, turnover2023: null, assets2023: null,
+                employees2022: null, turnover2022: null, assets2022: null,
+            }]);
+
+            const downloadExcel = () => {
+                try {
+                    // Load template from base64
+                    const binary = atob(TEMPLATE_B64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    const workbook = XLSX.read(bytes, { type: 'array' });
+                    const ws = workbook.Sheets[workbook.SheetNames[0]];
+
+                    const setVal = (cell, val) => {
+                        if (!ws[cell]) ws[cell] = {};
+                        ws[cell].v = val;
+                        ws[cell].t = typeof val === 'number' ? 'n' : 's';
+                    };
+
+                    // Convert EUR back to LEI for the template (template works in LEI)
+                    const toLei = (eurVal) => Math.round((eurVal || 0) * EUR_RON);
+
+                    // Header
+                    setVal('B1', `Denumire beneficiar: ${company.name || ''}`);
+                    setVal('B2', `CUI: ${company.cui || ''}`);
+
+                    // ─── Year N (rows 1-31) — 2024 data ───
+                    setVal('C6', `${company.name} / ${company.cui}`);
+                    setVal('C7', toLei(company.turnover2024));
+                    setVal('C11', toLei(company.assets2024));
+                    setVal('C12', company.employees2024 || 0);
+
+                    // ─── Year N-1 (rows 33-62) — 2023 data ───
+                    setVal('C37', `${company.name} / ${company.cui}`);
+                    setVal('C38', toLei(company.turnover2023));
+                    setVal('C42', toLei(company.assets2023));
+                    setVal('C43', company.employees2023 || 0);
+
+                    // ─── Year N-2 (rows 64-93) — 2022 data ───
+                    setVal('C68', `${company.name} / ${company.cui}`);
+                    setVal('C69', toLei(company.turnover2022));
+                    setVal('C73', toLei(company.assets2022));
+                    setVal('C74', company.employees2022 || 0);
+
+                    // ─── Linked/Partner enterprises ───
+                    // Linked firms columns: G, L, Q, V, AB, AH, AM, AR, AX, BE, BJ, BP, BV
+                    const linkedCols = ['G', 'L', 'Q', 'V', 'AB', 'AH', 'AM', 'AR', 'AX', 'BE', 'BJ', 'BP', 'BV'];
+                    const partnerCols = linkedCols; // same columns but in partner section
+
+                    const linkedEnts = enterprises.filter(e => e.type === 'linked');
+                    const partnerEnts = enterprises.filter(e => e.type === 'partner');
+
+                    linkedEnts.forEach((ent, idx) => {
+                        if (idx >= 13) return;
+                        const col = linkedCols[idx];
+                        // Year N
+                        setVal(`${col}6`, ent.name || '');
+                        setVal(`${col}7`, toLei(ent.turnover2024));
+                        setVal(`${col}11`, toLei(ent.assets2024));
+                        setVal(`${col}12`, ent.employees2024 || 0);
+                        // Year N-1
+                        setVal(`${col}37`, ent.name || '');
+                        setVal(`${col}38`, toLei(ent.turnover2023));
+                        setVal(`${col}42`, toLei(ent.assets2023));
+                        setVal(`${col}43`, ent.employees2023 || 0);
+                        // Year N-2
+                        setVal(`${col}68`, ent.name || '');
+                        setVal(`${col}69`, toLei(ent.turnover2022));
+                        setVal(`${col}73`, toLei(ent.assets2022));
+                        setVal(`${col}74`, ent.employees2022 || 0);
+                    });
+
+                    partnerEnts.forEach((ent, idx) => {
+                        if (idx >= 13) return;
+                        const col = partnerCols[idx];
+                        const pct = (ent.percent || 50) / 100;
+                        // Year N
+                        setVal(`${col}15`, pct);
+                        setVal(`${col}16`, ent.name || '');
+                        setVal(`${col}17`, toLei(ent.turnover2024));
+                        setVal(`${col}21`, toLei(ent.assets2024));
+                        setVal(`${col}22`, ent.employees2024 || 0);
+                        // Year N-1
+                        setVal(`${col}46`, pct);
+                        setVal(`${col}47`, ent.name || '');
+                        setVal(`${col}48`, toLei(ent.turnover2023));
+                        setVal(`${col}52`, toLei(ent.assets2023));
+                        setVal(`${col}53`, ent.employees2023 || 0);
+                        // Year N-2
+                        setVal(`${col}77`, pct);
+                        setVal(`${col}78`, ent.name || '');
+                        setVal(`${col}79`, toLei(ent.turnover2022));
+                        setVal(`${col}83`, toLei(ent.assets2022));
+                        setVal(`${col}84`, ent.employees2022 || 0);
+                    });
+
+                    // Download
+                    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+                    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Criteriu_IMM_${company.name || 'Firma'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    console.error("Excel download error:", err);
+                    alert("Eroare la generarea fișierului Excel: " + err.message);
+                }
+            };
+
+            const processSinglePDF = async (file, targetEntId = null) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = async (evt) => {
+                        try {
+                            const typedarray = new Uint8Array(evt.target.result);
+                            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                            let fullText = "";
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const content = await page.getTextContent();
+                                fullText += content.items.map(item => item.str).join(" ") + "\n";
+                            }
+                            processFinancialText(fullText, targetEntId);
+                            resolve();
+                        } catch (err) {
+                            console.error("PDF Import error:", err);
+                            reject(err);
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            };
+
+            const handleImport = async (e, targetEntId = null) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+
+                const pdfFiles = files.filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
+                const excelFiles = files.filter(f => !f.type.includes("pdf") && !f.name.endsWith(".pdf"));
+
+                // Process all PDFs (supports multiple files for different years)
+                if (pdfFiles.length > 0) {
+                    window._pdfImportResults = [];
+                    for (const file of pdfFiles) {
+                        try {
+                            await processSinglePDF(file, targetEntId);
+                        } catch (err) {
+                            window._pdfImportResults.push(`${file.name}: Eroare`);
+                        }
+                    }
+                    // Show single summary alert
+                    if (window._pdfImportResults.length > 0) {
+                        alert(window._pdfImportResults.join('\n'));
+                    }
+                    delete window._pdfImportResults;
+                }
+
+                // Process Excel (first one only)
+                const file = excelFiles[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const data = new Uint8Array(evt.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
+
+                            // Helper to get value
+                            const getVal = (cell) => {
+                                const val = worksheet[cell] ? worksheet[cell].v : null;
+                                return (val === 0 || val) ? val : null;
+                            };
+
+                            if (targetEntId) {
+                                // Specific update for an enterprise using "Company A" cells from the file
+                                updateEnterprise(targetEntId, "name", getVal('C1'));
+                                updateEnterprise(targetEntId, "employees2024", getVal('C13'));
+                                updateEnterprise(targetEntId, "turnover2024", getVal('C8'));
+                                updateEnterprise(targetEntId, "assets2024", getVal('C12'));
+                                updateEnterprise(targetEntId, "employees2023", getVal('C43'));
+                                updateEnterprise(targetEntId, "turnover2023", getVal('C38'));
+                                updateEnterprise(targetEntId, "assets2023", getVal('C42'));
+                                updateEnterprise(targetEntId, "employees2022", getVal('C74'));
+                                updateEnterprise(targetEntId, "turnover2022", getVal('C69'));
+                                updateEnterprise(targetEntId, "assets2022", getVal('C73'));
+                                alert(`Succes! Datele pentru partenerul selectat au fost importate.`);
+                            } else {
+                                // Global import (A + partners)
+                                setCompany(prev => ({
+                                    ...prev,
+                                    name: getVal('C1') || prev.name,
+                                    cui: getVal('C2') || prev.cui,
+                                    turnover2024: getVal('C8'), assets2024: getVal('C12'), employees2024: getVal('C13'),
+                                    turnover2023: getVal('C38'), assets2023: getVal('C42'), employees2023: getVal('C43'),
+                                    turnover2022: getVal('C69'), assets2022: getVal('C73'), employees2022: getVal('C74'),
+                                }));
+
+                                const partners = [];
+                                const colMaps = [
+                                    { name: 'G7', emp24: 'G13', to24: 'F8', as24: 'G12', emp23: 'G43', to23: 'F38', as23: 'G42', emp22: 'G74', to22: 'F69', as22: 'G73' },
+                                    { name: 'L7', emp24: 'L13', to24: 'K8', as24: 'L12', emp23: 'L43', to23: 'K38', as23: 'L42', emp22: 'L74', to22: 'K69', as22: 'L73' },
+                                    { name: 'Q7', emp24: 'Q13', to24: 'P8', as24: 'Q12', emp23: 'Q43', to23: 'P38', as23: 'Q42', emp22: 'Q74', to22: 'P69', as22: 'Q73' },
+                                    { name: 'V7', emp24: 'V13', to24: 'U8', as24: 'V12', emp23: 'V43', to23: 'U38', as23: 'V42', emp22: 'V74', to22: 'U69', as22: 'V73' }
+                                ];
+
+                                colMaps.forEach((map, idx) => {
+                                    const nameVal = getVal(map.name);
+                                    if (nameVal) {
+                                        partners.push({
+                                            id: Date.now() + idx,
+                                            name: nameVal,
+                                            type: "linked",
+                                            percent: 100,
+                                            employees2024: getVal(map.emp24), turnover2024: getVal(map.to24), assets2024: getVal(map.as24),
+                                            employees2023: getVal(map.emp23), turnover2023: getVal(map.to23), assets2023: getVal(map.as23),
+                                            employees2022: getVal(map.emp22), turnover2022: getVal(map.to22), assets2022: getVal(map.as22),
+                                        });
+                                    }
+                                });
+
+                                if (partners.length > 0) {
+                                    setEnterprises(partners);
+                                    setClassification("linked");
+                                }
+                                alert(`Succes! Datele pentru ${company.name || 'Compania A'} ${partners.length > 0 ? `și ${partners.length} parteneri` : ''} au fost importate.`);
+                            }
+                        } catch (err) {
+                            console.error("Import error:", err);
+                            alert("Eroare la citirea fișierului Excel.");
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+            };
+
+            const processFinancialText = (text, targetEntId = null) => {
+                // Normalize text: collapse whitespace, fix encoding issues
+                const t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                // Detect ANAF format using simple keywords that survive any encoding
+                const isANAF = /ACTIVE\s+IMOBILIZATE/i.test(t) && /Cifra\s+de\s+afaceri/i.test(t);
+
+                if (isANAF) {
+                    // ─── ANAF PDF Format ───
+                    // Year: look for "decembrie YYYY" or "31 decembrie YYYY"
+                    const yearMatch = t.match(/decembrie\s+(\d{4})/i);
+                    const year = yearMatch ? yearMatch[1] : "2024";
+
+                    // CUI: look for sequence of 6+ digits near "identificare" or standalone
+                    const cuiMatch = t.match(/identificare[:\s]*(\d{5,})/i) || t.match(/care[:\s]*(\d{5,})/i) || t.match(/cod unic[^:]*:\s*(\d{5,})/i);
+                    const cui = cuiMatch ? cuiMatch[1] : null;
+
+                    // PDF.js extracts: [LABEL][ ][VALUE] — use indexOf for exact match
+                    // Labels use em dash (\u2013) not hyphen
+                    const extractValue = (label) => {
+                        const idx = t.indexOf(label);
+                        if (idx === -1) return 0;
+                        const after = t.substring(idx + label.length, idx + label.length + 40).trim();
+                        const numMatch = after.match(/(\d[\d.]*)/);
+                        if (numMatch) return parseInt(numMatch[1].replace(/\./g, ''), 10) || 0;
+                        if (/^[\s]*[-\u2013]/.test(after) || /^[\s]*0\b/.test(after)) return 0;
+                        return 0;
+                    };
+
+                    const activeImobilizate = extractValue("ACTIVE IMOBILIZATE \u2013 TOTAL");
+                    const activeCirculante = extractValue("ACTIVE CIRCULANTE \u2013 TOTAL");
+                    const activeTotaleLei = activeImobilizate + activeCirculante;
+                    const cifraAfaceriLei = extractValue("Cifra de afaceri neta");
+
+                    // Employees: find "Numar mediu de salariati" then next number
+                    let employees = 0;
+                    const empIdx = t.indexOf("Numar mediu de salariati");
+                    if (empIdx !== -1) {
+                        const empAfter = t.substring(empIdx + 24, empIdx + 60).trim();
+                        const empNum = empAfter.match(/(\d+)/);
+                        if (empNum) employees = parseInt(empNum[1]) || 0;
+                    }
+
+                    // Convert LEI to EUR
+                    const turnoverEUR = Math.round(cifraAfaceriLei / EUR_RON);
+                    const assetsEUR = Math.round(activeTotaleLei / EUR_RON);
+
+                    if (activeImobilizate === 0 && activeCirculante === 0 && cifraAfaceriLei === 0 && employees === 0) {
+                        const msg = `${year}: Nu am reușit extragerea datelor`;
+                        if (window._pdfImportResults) window._pdfImportResults.push(msg);
+                        else alert(msg);
+                        return;
+                    }
+
+                    if (targetEntId) {
+                        updateEnterprise(targetEntId, `employees${year}`, employees);
+                        updateEnterprise(targetEntId, `turnover${year}`, turnoverEUR);
+                        updateEnterprise(targetEntId, `assets${year}`, assetsEUR);
+                        if (cui) updateEnterprise(targetEntId, "name", `CUI ${cui}`);
+                    } else {
+                        setCompany(prev => ({
+                            ...prev,
+                            cui: cui || prev.cui,
+                            [`turnover${year}`]: turnoverEUR,
+                            [`assets${year}`]: assetsEUR,
+                            [`employees${year}`]: employees,
+                        }));
+                    }
+                    const msg = `${year}: CA ${cifraAfaceriLei.toLocaleString('ro-RO')} LEI → ${turnoverEUR.toLocaleString('ro-RO')} EUR | Active ${activeTotaleLei.toLocaleString('ro-RO')} LEI → ${assetsEUR.toLocaleString('ro-RO')} EUR | Sal: ${employees}`;
+                    if (window._pdfImportResults) window._pdfImportResults.push(msg);
+                    else alert(msg);
+                } else {
+                    const msg = "Format PDF nerecunoscut.";
+                    if (window._pdfImportResults) window._pdfImportResults.push(msg);
+                    else alert(msg);
+                }
+            };
+
+            const updateEnterprise = (id, field, value) => {
+                if (value === null || value === undefined) return;
+                setEnterprises(prev => prev.map(ent => ent.id === id ? { ...ent, [field]: value } : ent));
+            };
+
+            window.handleEnterpriseImport = handleImport;
+
+            const removeEnterprise = (id) => setEnterprises(prev => prev.filter(e => e.id !== id));
+
+            // ─── Calculations (Step 4) ───
+            const calculations = useMemo(() => {
+                const calc = (yearSuffix) => {
+                    const empA = company[`employees${yearSuffix}`] || 0;
+                    const toA = company[`turnover${yearSuffix}`] || 0;
+                    const asA = company[`assets${yearSuffix}`] || 0;
+
+                    let empAdd = 0, toAdd = 0, asAdd = 0;
+
+                    if (classification !== "autonomous") {
+                        enterprises.forEach(ent => {
+                            const pct = (ent.percent || 0) / 100;
+                            const factor = ent.type === "linked" ? 1 : pct;
+                            empAdd += (ent[`employees${yearSuffix}`] || 0) * factor;
+                            toAdd += (ent[`turnover${yearSuffix}`] || 0) * factor;
+                            asAdd += (ent[`assets${yearSuffix}`] || 0) * factor;
+                        });
+                    }
+
+                    const totalEmp = empA + empAdd;
+                    const totalTO = toA + toAdd;
+                    const totalAs = asA + asAdd;
+
+                    const isMicro = totalEmp < 10 && (totalTO < 2000000 || totalAs < 2000000);
+                    const isSmall = totalEmp < 50 && (totalTO < 10000000 || totalAs < 10000000);
+                    const isMedium = totalEmp < 250 && (totalTO < 50000000 || totalAs < 43000000);
+
+                    let category = "Mare";
+                    if (isMicro) category = "Micro";
+                    else if (isSmall) category = "Mică";
+                    else if (isMedium) category = "Mijlocie";
+
+                    return { totalEmp, totalTO, totalAs, category, isMicro };
+                };
+
+                const y2024 = calc("2024");
+                const y2023 = calc("2023");
+                const y2022 = calc("2022");
+
+                let finalCategory;
+                if (y2024.category === y2023.category) {
+                    finalCategory = y2024.category;
+                } else if (y2023.category === y2022.category) {
+                    finalCategory = y2023.category;
+                } else {
+                    finalCategory = y2022.category;
+                }
+
+                const eligible = finalCategory === "Micro";
+                return { y2024, y2023, y2022, finalCategory, eligible };
+            }, [company, enterprises, classification]);
+
+            const updateCompany = (field, value) => setCompany(prev => ({ ...prev, [field]: value }));
+
+            return (
+                <div className="min-h-screen bg-bg text-text p-4 md:p-8">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="text-center mb-10">
+                            <div className="inline-flex items-center gap-3 mb-2">
+                                <div className="p-2.5 rounded-xl bg-gradient-to-br from-accent to-orange-600 shadow-lg shadow-accent/20">
+                                    <IconBuilding />
+                                </div>
+                                <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                                    Verificare IMM <span className="text-accent underline decoration-accent/30 decoration-4 underline-offset-4">PTJ</span>
+                                </h1>
+                            </div>
+                            <p className="text-sm text-textDim max-w-lg mx-auto leading-relaxed">
+                                Evaluare conform Anexei 4b la Ghidul Solicitantului PTJ (OMIPE 3672/2025)
+                            </p>
+                        </div>
+
+                        <StepIndicator steps={steps} current={step} onNavigate={setStep} />
+
+                        {step === 0 && (
+                            <Card className="animate-in fade-in duration-500">
+                                <h2 className="text-xl font-bold mb-1 flex items-center gap-2">
+                                    <span className="text-accent">Pasul 1</span> — Tipul întreprinderii
+                                </h2>
+                                <p className="text-sm text-textDim mb-6">Stabiliți clasificarea conform Legii 346/2004</p>
+
+                                <div className="space-y-3">
+                                    {[
+                                        { id: "autonomous", title: "Autonomă", color: "green", desc: "Nicio legătură cu alte firme (sub 25% capital/vot)." },
+                                        { id: "partner", title: "Parteneră", color: "blue", desc: "Capital sau voturi între 25% și 50% în/cu altă firmă." },
+                                        { id: "linked", title: "Legată", color: "accent", desc: "Control majoritar (>50%) direct sau indirect prin acorduri." }
+                                    ].map(opt => (
+                                        <button key={opt.id} onClick={() => setClassification(opt.id)}
+                                            className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-start gap-4
+                                                ${classification === opt.id ? `bg-${opt.color}Dim border-${opt.color}Border` : 'bg-cardAlt border-border'}`}>
+                                            <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
+                                                ${classification === opt.id ? `border-accent bg-accent` : 'border-textMuted'}`}>
+                                                {classification === opt.id && <div className="w-2 h-2 bg-bg rounded-full" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold mb-0.5">{opt.title}</div>
+                                                <div className="text-xs text-textDim leading-relaxed">{opt.desc}</div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="mt-6 flex justify-end">
+                                    <button onClick={() => setStep(1)} className="px-8 py-2.5 bg-accent text-bg font-bold rounded-lg hover:opacity-90 transition-opacity">
+                                        Continuă →
+                                    </button>
+                                </div>
+                            </Card>
+                        )}
+
+                        {step === 1 && (
+                            <Card className="animate-in fade-in duration-500">
+                                <h2 className="text-xl font-bold mb-1 flex items-center gap-2 text-blueCustom">
+                                    Subiectul Analizei (Compania A)
+                                </h2>
+                                <p className="text-sm text-textDim mb-6">Introduceți datele financiare pentru compania principală (A)</p>
+
+                                <div className="mb-8 p-6 border-2 border-dashed border-blueBorder/30 bg-blueDim/20 rounded-xl group hover:border-blueCustom/50 transition-all flex flex-col items-center justify-center text-center">
+                                    <div className="w-12 h-12 rounded-full bg-blueDim text-blueCustom flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                    </div>
+                                    <h3 className="font-bold text-sm mb-1 uppercase tracking-wider">Importă Datele din Excel sau PDF</h3>
+                                    <p className="text-xs text-textDim mb-4 max-w-xs">
+                                        Încarcă modelul oficial <strong>XLSX</strong> sau bilanțul <strong>PDF</strong> pentru auto-completare.
+                                    </p>
+                                    <label className="cursor-pointer px-8 py-3 bg-blueCustom text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blueCustom/20">
+                                        Încărcare Fișier (Excel / PDF)
+                                        <input type="file" accept=".xlsx, .xls, .pdf" multiple className="hidden" onChange={handleImport} />
+                                    </label>
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-4 text-blueCustom font-bold uppercase tracking-widest text-[10px]">
+                                    <div className="w-5 h-5 rounded bg-blueCustom text-bg flex items-center justify-center text-[10px]">A</div>
+                                    Date financiare A
+                                </div>
+
+                                <div className="flex gap-4 flex-wrap mb-8">
+                                    <TextInput label="Denumire" value={company.name} onChange={v => updateCompany("name", v)} placeholder="SC Exemplu SRL" />
+                                    <TextInput label="CUI / CIF" value={company.cui} onChange={v => updateCompany("cui", v)} placeholder="RO12345678" />
+                                </div>
+
+                                {["2024", "2023", "2022"].map(year => (
+                                    <div key={year} className="mb-6 p-4 border border-border/50 rounded-xl bg-cardAlt/30">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <div className={`w-2 h-2 rounded-full ${year === '2024' ? 'bg-accent' : 'bg-blueCustom'}`} />
+                                            <span className="font-bold text-sm tracking-wide">Anul Fiscal {year}</span>
+                                        </div>
+                                        <div className="flex gap-4 flex-wrap">
+                                            <NumberInput label="Salariați" value={company[`employees${year}`]} onChange={v => updateCompany(`employees${year}`, v)} />
+                                            <NumberInput label="Cifră Afaceri (EUR)" value={company[`turnover${year}`]} onChange={v => updateCompany(`turnover${year}`, v)} suffix="€" />
+                                            <NumberInput label="Active Totale (EUR)" value={company[`assets${year}`]} onChange={v => updateCompany(`assets${year}`, v)} suffix="€" />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="flex justify-between items-center mt-8">
+                                    <button onClick={() => setStep(0)} className="text-sm text-textDim hover:text-text">← Înapoi</button>
+                                    <button onClick={() => setStep(classification === 'autonomous' ? 3 : 2)} className="px-8 py-2.5 bg-accent text-bg font-bold rounded-lg hover:opacity-90 transition-opacity">
+                                        {classification === 'autonomous' ? 'Vezi rezultatul →' : 'Continuă →'}
+                                    </button>
+                                </div>
+                            </Card>
+                        )}
+
+                        {step === 2 && (
+                            <Card className="animate-in fade-in duration-500">
+                                <h2 className="text-xl font-bold mb-1 text-blueCustom">Companii Partenere / Legate (B, C, D...)</h2>
+                                <p className="text-sm text-textDim mb-6">Cumularea datelor din grup conform clasif. {classification}</p>
+
+                                <div className="space-y-3">
+                                    {enterprises.map((ent, idx) => (
+                                        <EnterpriseRow key={ent.id} ent={ent} index={idx}
+                                            onChange={(f, v) => updateEnterprise(ent.id, f, v)}
+                                            onRemove={() => removeEnterprise(ent.id)}
+                                            showRemove={true} />
+                                    ))}
+                                </div>
+
+                                <button onClick={addEnterprise} className="w-full py-4 border-2 border-dashed border-accentBorder bg-accentDim text-accent rounded-xl font-bold flex items-center justify-center gap-2 mt-4 hover:bg-accent/20 transition-colors">
+                                    <IconPlus /> Adaugă firmă din grup
+                                </button>
+
+                                <div className="flex justify-between items-center mt-10">
+                                    <button onClick={() => setStep(1)} className="text-sm text-textDim">← Înapoi</button>
+                                    <button onClick={() => setStep(3)} className="px-8 py-2.5 bg-accent text-bg font-bold rounded-lg shadow-lg shadow-accent/20">
+                                        Verifică Final →
+                                    </button>
+                                </div>
+                            </Card>
+                        )}
+
+                        {step === 3 && (
+                            <div className="space-y-6 animate-in zoom-in duration-500">
+                                <Card glow={calculations.eligible ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"} className="text-center py-10">
+                                    <div className="flex justify-center mb-6">
+                                        <div className={`w-16 h-16 rounded-full flex items-center justify-center border-4
+                                            ${calculations.eligible ? 'border-greenCustom/20 bg-greenDim text-greenCustom' : 'border-redCustom/20 bg-redDim text-redCustom'}`}>
+                                            {calculations.eligible ? <IconCheck /> : <IconX />}
+                                        </div>
+                                    </div>
+                                    <h2 className={`text-3xl font-black mb-2 tracking-tight ${calculations.eligible ? 'text-greenCustom' : 'text-redCustom'}`}>
+                                        {calculations.eligible ? "ELIGIBIL" : "NEELIGIBIL"}
+                                    </h2>
+                                    <div className="text-sm text-textDim flex items-center justify-center gap-2 mb-6">
+                                        <span>Încadrare finală:</span>
+                                        <Badge color={calculations.eligible ? "green" : "red"}>{calculations.finalCategory}</Badge>
+                                    </div>
+                                    <div className="text-xs text-textMuted max-w-sm mx-auto leading-relaxed italic">
+                                        Confirmarea oficială depășește scopul acestui instrument și necesită validare juridică/financiară.
+                                    </div>
+                                </Card>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {[
+                                        { year: "2024", data: calculations.y2024 },
+                                        { year: "2023", data: calculations.y2023 },
+                                        { year: "2022", data: calculations.y2022 }
+                                    ].map(y => (
+                                        <Card key={y.year}>
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className="font-bold">{y.year}</span>
+                                                <Badge color={y.data.isMicro ? "green" : "red"}>{y.data.category}</Badge>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between text-xs">
+                                                    <span className="text-textMuted">Salariați</span>
+                                                    <span className="font-mono">{fmt(y.data.totalEmp)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-xs">
+                                                    <span className="text-textMuted">Cifră Afaceri</span>
+                                                    <span className="font-mono">{fmtEur(y.data.totalTO)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-xs">
+                                                    <span className="text-textMuted">Active Totale</span>
+                                                    <span className="font-mono">{fmtEur(y.data.totalAs)}</span>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+
+                                <Card>
+                                    <h3 className="font-bold flex items-center gap-2 mb-4 text-sm uppercase tracking-wider text-accent/80">
+                                        <IconAlert /> Regula 2 ani consecutivi
+                                    </h3>
+                                    <div className="text-xs text-textDim leading-relaxed bg-cardAlt/50 p-4 rounded-lg border border-border/50">
+                                        {calculations.y2024.category === calculations.y2023.category
+                                            ? `Scenariu A: Categoria s-a menținut "${calculations.y2024.category}" timp de 2 ani consecutivi (2023-2024). Aceasta este încadrarea rezultată legal.`
+                                            : calculations.y2023.category === calculations.y2022.category
+                                                ? `Scenariu B: Categoria s-a menținut "${calculations.y2023.category}" în perioada 2022-2023. Modificarea din 2024 nu produce încă efecte de modificare a statutului IMM.`
+                                                : `Scenariu C: Fluctuații constante. Se reține categoria stabilită în primul an analizat (2022): ${calculations.y2022.category}.`
+                                        }
+                                    </div>
+                                </Card>
+
+                                <Card className="bg-gradient-to-br from-blueDim to-transparent border-blueBorder/30">
+                                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-blueCustom mb-1 flex items-center gap-2">
+                                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                                                Raport Excel Oficial
+                                            </h3>
+                                            <p className="text-xs text-textDim leading-relaxed">
+                                                Descărcați modelul de calcul pentru încadrarea în categoria IMM, completat automat cu datele din această analiză.
+                                            </p>
+                                        </div>
+                                        <button onClick={downloadExcel} className="w-full md:w-auto px-6 py-3 bg-blueCustom text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-blueCustom/20 group">
+                                            Descarcă Excel (.xlsx)
+                                            <span className="transform group-hover:translate-y-1 transition-transform">↓</span>
+                                        </button>
+                                    </div>
+                                </Card>
+
+                                <div className="flex justify-center pt-6 pb-12">
+                                    <button onClick={() => location.reload()} className="flex items-center gap-2 p-3 text-sm font-semibold text-textDim hover:text-white transition-colors">
+                                        ↺ Reia evaluarea
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<IMMVerifier />);
+    </script>
+</body>
+
+</html>
