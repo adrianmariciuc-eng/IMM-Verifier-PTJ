@@ -17,6 +17,8 @@
         rel="stylesheet">
     <!-- SheetJS for Excel Download -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- docx.js for DOCX generation -->
+    <script src="https://unpkg.com/docx@9.5.1/dist/index.iife.js"></script>
     <!-- Excel template data -->
     <script src="template_data.js"></script>
     <!-- PDF.js for PDF Import -->
@@ -104,18 +106,13 @@
         // ─── AUTH SYSTEM ───
         // ═══════════════════════════════════════════════════════════
 
-        // SHA-256 hash function (browser native)
-        async function sha256(text) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(text);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        // Simple encode/decode for passwords (base64 obfuscation)
+        const _enc = (s) => btoa(unescape(encodeURIComponent(s)));
+        const _dec = (s) => { try { return decodeURIComponent(escape(atob(s))); } catch(e) { return ''; } };
 
-        // Default admin account (password hash of "admin123")
+        // Default admin account
         const DEFAULT_USERS = [
-            { id: 1, username: "admin", passwordHash: "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9", role: "admin" }
+            { id: 1, username: "adrian.mariciuc", password: _enc("M@ra2@23"), role: "admin" }
         ];
 
         // Load users from localStorage or use defaults
@@ -153,9 +150,8 @@
             }, []);
 
             const login = async (username, password) => {
-                const hash = await sha256(password);
                 const users = loadUsers();
-                const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.passwordHash === hash);
+                const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && _dec(u.password) === password);
                 if (!user) throw new Error("Utilizator sau parolă incorectă.");
                 setCurrentUser(user);
                 localStorage.setItem("imm_session", JSON.stringify({ id: user.id, username: user.username }));
@@ -264,11 +260,10 @@
                     showMsg("Acest username există deja.", "error");
                     return;
                 }
-                const hash = await sha256(newPassword);
                 const newUser = {
                     id: Date.now(),
                     username: newUsername.trim(),
-                    passwordHash: hash,
+                    password: _enc(newPassword),
                     role: newRole,
                 };
                 const updated = [...users, newUser];
@@ -307,8 +302,7 @@
                     if (newPwd !== null) showMsg("Parola trebuie să aibă minim 4 caractere.", "error");
                     return;
                 }
-                const hash = await sha256(newPwd);
-                const updated = users.map(u => u.id === userId ? { ...u, passwordHash: hash } : u);
+                const updated = users.map(u => u.id === userId ? { ...u, password: _enc(newPwd) } : u);
                 setUsers(updated);
                 saveUsers(updated);
                 showMsg("Parola a fost schimbată.");
@@ -407,7 +401,7 @@
                         <div className="mt-6 p-4 bg-cardAlt rounded-xl border border-border">
                             <p className="text-xs text-textMuted">
                                 <span className="text-accent font-bold">Notă:</span> Utilizatorii sunt salvați local în browser (localStorage).
-                                Fiecare browser/dispozitiv are propria listă de utilizatori. La prima accesare, contul implicit este <strong className="text-text">admin / admin123</strong>.
+                                Fiecare browser/dispozitiv are propria listă de utilizatori.
                             </p>
                         </div>
                     </div>
@@ -499,6 +493,48 @@
             );
         }
 
+        function DaNuToggle({ label, value, onChange, observation, onObservationChange }) {
+            return (
+                <div className="py-3 border-b border-border/30 last:border-b-0">
+                    <div className="flex flex-wrap items-start gap-3">
+                        <span className="flex-1 text-xs text-text min-w-[200px] leading-relaxed pt-0.5">{label}</span>
+                        <div className="flex gap-1">
+                            <button onClick={() => onChange("DA")}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${value === "DA" ? 'bg-greenDim text-greenCustom border border-greenBorder' : 'bg-cardAlt text-textMuted border border-border hover:border-greenBorder/50'}`}>
+                                DA
+                            </button>
+                            <button onClick={() => onChange("NU")}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${value === "NU" ? 'bg-redDim text-redCustom border border-redBorder' : 'bg-cardAlt text-textMuted border border-border hover:border-redBorder/50'}`}>
+                                NU
+                            </button>
+                        </div>
+                    </div>
+                    {onObservationChange && (
+                        <input type="text" placeholder="Observatii..." value={observation || ""}
+                            onChange={e => onObservationChange(e.target.value)}
+                            className="mt-2 bg-cardAlt border border-border rounded-lg text-text px-2.5 py-1.5 text-xs w-full outline-none focus:border-accent transition-colors" />
+                    )}
+                </div>
+            );
+        }
+
+        function CollapsibleSection({ title, icon, isOpen, onToggle, children }) {
+            return (
+                <div className="border border-border/50 rounded-xl overflow-hidden mb-3">
+                    <button onClick={onToggle}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-cardAlt/50 hover:bg-cardAlt transition-colors">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm">{icon}</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-textDim">{title}</span>
+                        </div>
+                        <svg className={`w-4 h-4 text-textMuted transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                            fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    {isOpen && <div className="px-4 py-3">{children}</div>}
+                </div>
+            );
+        }
+
         function StepIndicator({ steps, current, onNavigate }) {
             return (
                 <div className="flex gap-0.5 mb-8">
@@ -586,6 +622,156 @@
 
             // Step 3 – Related enterprises
             const [enterprises, setEnterprises] = useState([]);
+
+            // DOCX-specific state
+            const [docxData, setDocxData] = useState({
+                projectTitle: "",
+                smisCode: "",
+                financingRequestNumber: "",
+                financingRequestDate: "",
+                // Shareholder analysis
+                hasLegalPersonShareholders: null,
+                isCalculationCorrect: null,
+                hasNaturalPersonRelationships: null,
+                isNaturalPersonCalculationCorrect: null,
+                // Governance analysis
+                hasBoardMajorityAppointed: null,
+                hasSingleShareholderControl: null,
+                // Market dependency
+                hasDominantClient: null,
+                hasDependentSupplier: null,
+                // Evaluator
+                evaluatorName: "",
+                evaluationDate: new Date().toISOString().split('T')[0],
+                // Observations
+                observations: {},
+            });
+            const updateDocxData = (field, value) => setDocxData(prev => ({ ...prev, [field]: value }));
+            const updateObservation = (key, value) => setDocxData(prev => ({
+                ...prev,
+                observations: { ...prev.observations, [key]: value }
+            }));
+            const [docxSectionsOpen, setDocxSectionsOpen] = useState({
+                project: true, shareholders: false, governance: false, market: false, evaluator: false
+            });
+            const toggleDocxSection = (key) => setDocxSectionsOpen(prev => ({ ...prev, [key]: !prev[key] }));
+
+            // Projects database (imported from Excel)
+            const [projectsDB, setProjectsDB] = useState(() => {
+                try {
+                    const stored = localStorage.getItem("imm_projects_db");
+                    if (stored) return JSON.parse(stored);
+                } catch (e) {}
+                return [];
+            });
+
+            const importProjectsExcel = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = new Uint8Array(evt.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const ws = workbook.Sheets[workbook.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+                        const projects = rows.map((row, idx) => {
+                            // Flexible column matching
+                            const findCol = (keys) => {
+                                for (const key of Object.keys(row)) {
+                                    const k = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    for (const search of keys) {
+                                        if (k.includes(search)) return row[key];
+                                    }
+                                }
+                                return "";
+                            };
+
+                            // Format date if it's a JS Date or serial number
+                            let dateVal = findCol(["datadepunere", "datacerere", "data", "date"]);
+                            if (dateVal instanceof Date) {
+                                dateVal = dateVal.toLocaleDateString('ro-RO');
+                            } else if (typeof dateVal === 'number') {
+                                // Excel serial date
+                                const d = new Date((dateVal - 25569) * 86400 * 1000);
+                                dateVal = d.toLocaleDateString('ro-RO');
+                            }
+
+                            return {
+                                id: Date.now() + idx,
+                                solicitant: String(findCol(["solicitant", "beneficiar", "firma", "denumire"]) || "").trim(),
+                                projectTitle: String(findCol(["titluproiect", "titlu", "proiect"]) || "").trim(),
+                                smisCode: String(findCol(["codsmis", "smis"]) || "").trim(),
+                                referenceNumber: String(findCol(["numaruldereferinta", "referinta", "nrref"]) || "").trim(),
+                                financingRequestDate: String(dateVal || "").trim(),
+                            };
+                        }).filter(p => p.solicitant);
+
+                        if (projects.length === 0) {
+                            alert("Nu s-au gasit proiecte in fisierul Excel.\n\nAsigurati-va ca exista o coloana 'Solicitant'.");
+                            return;
+                        }
+
+                        setProjectsDB(projects);
+                        localStorage.setItem("imm_projects_db", JSON.stringify(projects));
+                        alert(`${projects.length} proiect(e) importate cu succes!`);
+                    } catch (err) {
+                        console.error("Projects import error:", err);
+                        alert("Eroare la importul fisierului Excel cu proiecte: " + err.message);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+                e.target.value = '';
+            };
+
+            // Normalize company name for fuzzy matching
+            const normalizeName = (name) => {
+                if (!name) return "";
+                return name.toUpperCase()
+                    .replace(/\bS\.?C\.?\b/g, '')
+                    .replace(/\bS\.?R\.?L\.?\b/g, '')
+                    .replace(/\bS\.?A\.?\b/g, '')
+                    .replace(/[.\-,;'"]/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            };
+
+            // Auto-fill project data when company name matches a Solicitant
+            const lookupProjectByName = useCallback((companyName) => {
+                if (!companyName || projectsDB.length === 0) return;
+                const normalized = normalizeName(companyName);
+                if (normalized.length < 3) return;
+
+                // Try exact match first, then fuzzy
+                let match = projectsDB.find(p => normalizeName(p.solicitant) === normalized);
+                if (!match) {
+                    // Try partial match (company name contained in solicitant or vice-versa)
+                    match = projectsDB.find(p => {
+                        const ns = normalizeName(p.solicitant);
+                        return ns.includes(normalized) || normalized.includes(ns);
+                    });
+                }
+
+                if (match) {
+                    setDocxData(prev => ({
+                        ...prev,
+                        projectTitle: match.projectTitle || prev.projectTitle,
+                        smisCode: match.smisCode || prev.smisCode,
+                        financingRequestNumber: match.referenceNumber || prev.financingRequestNumber,
+                        financingRequestDate: match.financingRequestDate || prev.financingRequestDate,
+                    }));
+                    return match;
+                }
+                return null;
+            }, [projectsDB]);
+
+            // Auto-lookup when company name changes
+            useEffect(() => {
+                if (company.name && projectsDB.length > 0) {
+                    lookupProjectByName(company.name);
+                }
+            }, [company.name, projectsDB, lookupProjectByName]);
 
             const addEnterprise = () => setEnterprises(prev => [...prev, {
                 id: Date.now(), name: "", type: "linked", percent: null,
@@ -700,6 +886,439 @@
                 } catch (err) {
                     console.error("Excel download error:", err);
                     alert("Eroare la generarea fișierului Excel: " + err.message);
+                }
+            };
+
+            const downloadDocx = async () => {
+                try {
+                    const { Document, Packer, Paragraph, Table, TableRow, TableCell,
+                        TextRun, WidthType, BorderStyle, AlignmentType,
+                        HeadingLevel, VerticalAlign, HeightRule, TableLayoutType,
+                        convertInchesToTwip, ShadingType } = docx;
+
+                    const BORDER = { style: BorderStyle.SINGLE, size: 1, color: "000000" };
+                    const BORDERS_ALL = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
+                    const BORDERS_NONE = {
+                        top: { style: BorderStyle.NONE, size: 0 },
+                        bottom: { style: BorderStyle.NONE, size: 0 },
+                        left: { style: BorderStyle.NONE, size: 0 },
+                        right: { style: BorderStyle.NONE, size: 0 }
+                    };
+
+                    const makeCell = (text, opts = {}) => {
+                        const { bold, size, width, colspan, rowspan, align, shading, vAlign } = opts;
+                        const cellOpts = {
+                            children: [new Paragraph({
+                                children: [new TextRun({ text: text || "", bold: bold || false, size: size || 18, font: "Arial" })],
+                                alignment: align || AlignmentType.LEFT,
+                                spacing: { before: 40, after: 40 },
+                            })],
+                            borders: BORDERS_ALL,
+                            verticalAlign: vAlign || VerticalAlign.CENTER,
+                        };
+                        if (width) cellOpts.width = { size: width, type: WidthType.DXA };
+                        if (colspan) cellOpts.columnSpan = colspan;
+                        if (rowspan) cellOpts.rowSpan = rowspan;
+                        if (shading) cellOpts.shading = { type: ShadingType.CLEAR, fill: shading };
+                        return new TableCell(cellOpts);
+                    };
+
+                    const makeMultiCell = (runs, opts = {}) => {
+                        const { width, colspan, rowspan, align, shading, vAlign } = opts;
+                        const cellOpts = {
+                            children: [new Paragraph({
+                                children: runs.map(r => new TextRun({ text: r.text || "", bold: r.bold || false, size: r.size || 18, font: "Arial", break: r.break ? 1 : undefined })),
+                                alignment: align || AlignmentType.LEFT,
+                                spacing: { before: 40, after: 40 },
+                            })],
+                            borders: BORDERS_ALL,
+                            verticalAlign: vAlign || VerticalAlign.CENTER,
+                        };
+                        if (width) cellOpts.width = { size: width, type: WidthType.DXA };
+                        if (colspan) cellOpts.columnSpan = colspan;
+                        if (rowspan) cellOpts.rowSpan = rowspan;
+                        if (shading) cellOpts.shading = { type: ShadingType.CLEAR, fill: shading };
+                        return new TableCell(cellOpts);
+                    };
+
+                    const checkMark = (val, expected) => val === expected ? "X" : "";
+
+                    // Determine classification text
+                    const classifText = classification === "autonomous" ? "intreprindere autonoma"
+                        : classification === "partner" ? "intreprindere partenera"
+                        : "intreprindere legata";
+
+                    // Determine enterprise names for linked/partner
+                    const linkedNames = enterprises.map(e => `${e.name || ''}${e.name ? ' - CUI ...' : ''}`).filter(Boolean).join(', ') || '';
+
+                    // Classification result
+                    const catMap = { "Micro": "Microintreprindere", "Mică": "Intreprindere mica", "Mijlocie": "Intreprindere mijlocie", "Mare": "Intreprindere mare" };
+                    const finalCat = calculations.finalCategory;
+
+                    // ═══ TABLE 0 — Header ═══
+                    const headerTable = new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    makeCell("MINISTERUL INVESTITIILOR SI PROIECTELOR EUROPENE\nDirectia Generala Program Dezvoltare Durabila si Tranzitie Justa", { bold: true, size: 16, width: 4000, rowspan: 2 }),
+                                    makeCell("PROCEDURA OPERATIONALA", { bold: true, size: 16, align: AlignmentType.CENTER }),
+                                    makeCell("PO.DGTJCE.93", { bold: true, size: 16, align: AlignmentType.CENTER, colspan: 2 }),
+                                ]
+                            }),
+                            new TableRow({
+                                children: [
+                                    makeCell("EVALUAREA si SELECTIA PROIECTELOR FINANTATE PRIN PROGRAMUL TRANZITIE JUSTA", { bold: true, size: 16, align: AlignmentType.CENTER }),
+                                    makeCell("Editia I", { size: 16, align: AlignmentType.CENTER }),
+                                    makeCell("Revizia 1", { size: 16, align: AlignmentType.CENTER }),
+                                ]
+                            }),
+                        ]
+                    });
+
+                    // ═══ TABLE 1 — Project Info ═══
+                    const projectInfoTable = new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    makeMultiCell([
+                                        { text: "Titlu Proiect: ", bold: true, size: 18 },
+                                        { text: docxData.projectTitle || "..................", size: 18 },
+                                        { text: "Cod SMIS: ", bold: true, size: 18, break: true },
+                                        { text: docxData.smisCode || "..................", size: 18 },
+                                        { text: "Solicitant: ", bold: true, size: 18, break: true },
+                                        { text: company.name || "..................", size: 18 },
+                                        { text: "CUI: ", bold: true, size: 18, break: true },
+                                        { text: company.cui || "..................", size: 18 },
+                                        { text: "Numarul si data Cererii de finantare: ", bold: true, size: 18, break: true },
+                                        { text: `nr. ${docxData.financingRequestNumber || "........"} din ${docxData.financingRequestDate || ".........."}`, size: 18 },
+                                    ]),
+                                ]
+                            }),
+                        ]
+                    });
+
+                    // ═══ Title paragraphs ═══
+                    const titlePara1 = new Paragraph({
+                        children: [new TextRun({ text: "Lista de verificare privind tipul intreprinderii", bold: true, size: 22, font: "Arial" })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 200, after: 100 },
+                    });
+                    const titlePara2 = new Paragraph({
+                        children: [new TextRun({ text: "din punct de vedere al numarului de angajati si cifra de afaceri/active totale, conform prevederilor Legii nr. 346/2004", size: 18, font: "Arial" })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 100 },
+                    });
+                    const titlePara3 = new Paragraph({
+                        children: [new TextRun({ text: "Daca Solicitantul se declara intreprindere mare, se verifica doar cerinta de la pct.IV, al.4.", italics: true, size: 16, font: "Arial" })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 200 },
+                    });
+
+                    // ═══ TABLE 2 — Main Verification Checklist ═══
+                    const SHADE_HEADER = "D9E2F3";
+                    const SHADE_SECTION = "E2EFDA";
+                    const COL_REQ = 6000;
+                    const COL_DA = 800;
+                    const COL_NU = 800;
+                    const COL_OBS = 3000;
+
+                    const sectionRow = (text) => new TableRow({
+                        children: [
+                            makeCell(text, { bold: true, size: 16, colspan: 4, shading: SHADE_SECTION, align: AlignmentType.CENTER }),
+                        ]
+                    });
+
+                    const checkRow = (label, value, obsKey) => new TableRow({
+                        children: [
+                            makeCell(label, { size: 16, width: COL_REQ }),
+                            makeCell(checkMark(value, "DA"), { size: 16, width: COL_DA, align: AlignmentType.CENTER }),
+                            makeCell(checkMark(value, "NU"), { size: 16, width: COL_NU, align: AlignmentType.CENTER }),
+                            makeCell(docxData.observations[obsKey] || "", { size: 16, width: COL_OBS }),
+                        ]
+                    });
+
+                    const conclusionRow = (text) => new TableRow({
+                        children: [
+                            makeCell("Concluzie:", { bold: true, size: 16, width: COL_REQ }),
+                            makeCell(text, { size: 16, colspan: 3 }),
+                        ]
+                    });
+
+                    const checklistRows = [
+                        // Row 0: Enterprise type declaration
+                        new TableRow({
+                            children: [
+                                makeMultiCell([
+                                    { text: "Solicitantul se declara ", size: 16 },
+                                    { text: classifText, bold: true, size: 16 },
+                                    { text: classification !== "autonomous" ? ` cu ${linkedNames}` : "", size: 16 },
+                                ], { colspan: 4, shading: SHADE_HEADER }),
+                            ]
+                        }),
+
+                        // Section I: Shareholder analysis
+                        sectionRow("I. Verificarea modului de constituire a capitalului social al Solicitantului (asociati/actionari persoane juridice si persoane fizice)"),
+
+                        // Column headers
+                        new TableRow({
+                            children: [
+                                makeCell("Cerinta", { bold: true, size: 16, width: COL_REQ, shading: SHADE_HEADER, align: AlignmentType.CENTER }),
+                                makeCell("DA", { bold: true, size: 16, width: COL_DA, shading: SHADE_HEADER, align: AlignmentType.CENTER }),
+                                makeCell("NU", { bold: true, size: 16, width: COL_NU, shading: SHADE_HEADER, align: AlignmentType.CENTER }),
+                                makeCell("OBSERVATII", { bold: true, size: 16, width: COL_OBS, shading: SHADE_HEADER, align: AlignmentType.CENTER }),
+                            ]
+                        }),
+
+                        // 1. Legal persons
+                        checkRow(
+                            "1. Exista in structura actionariatului/asociatilor Solicitantului persoane juridice care au calitatea de asociat/actionar si care creeaza o relatie de intreprindere partenera sau legata?",
+                            docxData.hasLegalPersonShareholders,
+                            "legalPerson"
+                        ),
+
+                        // 1.1. Calculation
+                        checkRow(
+                            "1.1. Datele inscrise in Declaratia pe propria raspundere privind incadrarea intreprinderii in categoria de microintreprinderi/intreprinderi mici si mijlocii sunt corect calculate?",
+                            docxData.isCalculationCorrect,
+                            "calcCorrect"
+                        ),
+
+                        // 2. Natural persons
+                        checkRow(
+                            "2. Exista in structura actionariatului/asociatilor Solicitantului persoane fizice care, prin participatiile lor la capitalul social sau prin drepturile de vot detinute, creeaza o relatie de intreprindere partenera sau legata cu o alta intreprindere?\n(actiune in comun, membrii familiei, etc.)",
+                            docxData.hasNaturalPersonRelationships,
+                            "naturalPerson"
+                        ),
+
+                        // 2.1. Natural person calculation
+                        checkRow(
+                            "2.1. Datele privind intreprinderile legate/partenere prin persoane fizice sunt corect calculate in Declaratia IMM?",
+                            docxData.isNaturalPersonCalculationCorrect,
+                            "naturalCalcCorrect"
+                        ),
+
+                        // Conclusion I
+                        conclusionRow(
+                            docxData.hasLegalPersonShareholders === "NU" && docxData.hasNaturalPersonRelationships === "NU"
+                                ? "Nu exista relatii de parteneriat/legatura prin structura actionariatului."
+                                : docxData.hasLegalPersonShareholders === "DA" || docxData.hasNaturalPersonRelationships === "DA"
+                                    ? "Exista relatii de parteneriat/legatura ce au fost luate in calcul."
+                                    : "..."
+                        ),
+
+                        // Section II: Governance
+                        sectionRow("II. Analiza controlului direct/indirect, inclusiv prin acorduri (verificari suplimentare)"),
+
+                        // 2.1 Board
+                        checkRow(
+                            "2.1. Majoritatea membrilor organului de administrare, de conducere sau de supraveghere al Solicitantului sunt numiti/revocati de o alta intreprindere?",
+                            docxData.hasBoardMajorityAppointed,
+                            "boardMajority"
+                        ),
+
+                        // 2.2 Single shareholder control
+                        checkRow(
+                            "2.2. Un actionar/asociat unic controleaza singur, in baza unui acord incheiat cu alti actionari/asociati, majoritatea drepturilor de vot?",
+                            docxData.hasSingleShareholderControl,
+                            "shareholderControl"
+                        ),
+
+                        // Conclusion II
+                        conclusionRow(
+                            docxData.hasBoardMajorityAppointed === "NU" && docxData.hasSingleShareholderControl === "NU"
+                                ? "Nu exista control direct/indirect suplimentar."
+                                : "Exista relatii de control ce au fost analizate."
+                        ),
+
+                        // Section III: Market dependency
+                        sectionRow("III. Analiza politicilor financiare/operationale ale intreprinderilor partenere (25%-50%)"),
+
+                        // 3.1 Client dependency
+                        checkRow(
+                            "3.1. Exista o intreprindere partenera care este client cu pozitie dominanta pe piata Solicitantului (peste 50% din cifra de afaceri)?",
+                            docxData.hasDominantClient,
+                            "dominantClient"
+                        ),
+
+                        // 3.2 Supplier dependency
+                        checkRow(
+                            "3.2. Exista o intreprindere partenera care este furnizor cu pozitie dominanta (peste 50% din costurile de productie/aprovizionare)?",
+                            docxData.hasDependentSupplier,
+                            "dependentSupplier"
+                        ),
+
+                        // Conclusion III
+                        conclusionRow(
+                            docxData.hasDominantClient === "NU" && docxData.hasDependentSupplier === "NU"
+                                ? "Nu exista dependenta de piata cu intreprinderi partenere."
+                                : "Exista dependenta de piata ce a fost analizata."
+                        ),
+
+                        // Section IV: Classification
+                        sectionRow("IV. Verificare incadrare conform Legii 346/2004 (pe baza datelor din Declaratia IMM)"),
+
+                        // Micro
+                        new TableRow({
+                            children: [
+                                makeCell("Microintreprindere: pana la 9 salariati; cifra de afaceri anuala neta sau activele totale de pana la 2 milioane euro", { size: 16, width: COL_REQ }),
+                                makeCell(finalCat === "Micro" ? "X" : "", { size: 16, width: COL_DA, align: AlignmentType.CENTER }),
+                                makeCell(finalCat === "Micro" ? "" : "X", { size: 16, width: COL_NU, align: AlignmentType.CENTER }),
+                                makeCell("", { size: 16, width: COL_OBS }),
+                            ]
+                        }),
+
+                        // Small
+                        new TableRow({
+                            children: [
+                                makeCell("Intreprindere mica: de la 10 pana la 49 de salariati; cifra de afaceri anuala neta sau activele totale de pana la 10 milioane euro", { size: 16, width: COL_REQ }),
+                                makeCell(finalCat === "Mică" ? "X" : "", { size: 16, width: COL_DA, align: AlignmentType.CENTER }),
+                                makeCell(finalCat === "Mică" ? "" : "X", { size: 16, width: COL_NU, align: AlignmentType.CENTER }),
+                                makeCell("", { size: 16, width: COL_OBS }),
+                            ]
+                        }),
+
+                        // Medium
+                        new TableRow({
+                            children: [
+                                makeCell("Intreprindere mijlocie: de la 50 pana la 249 de salariati; cifra de afaceri anuala neta de pana la 50 milioane euro sau active totale de pana la 43 milioane euro", { size: 16, width: COL_REQ }),
+                                makeCell(finalCat === "Mijlocie" ? "X" : "", { size: 16, width: COL_DA, align: AlignmentType.CENTER }),
+                                makeCell(finalCat === "Mijlocie" ? "" : "X", { size: 16, width: COL_NU, align: AlignmentType.CENTER }),
+                                makeCell("", { size: 16, width: COL_OBS }),
+                            ]
+                        }),
+
+                        // Large
+                        new TableRow({
+                            children: [
+                                makeCell("Intreprindere mare: peste 250 de salariati; cifra de afaceri anuala neta peste 50 milioane euro sau activele totale peste 43 milioane euro", { size: 16, width: COL_REQ }),
+                                makeCell(finalCat === "Mare" ? "X" : "", { size: 16, width: COL_DA, align: AlignmentType.CENTER }),
+                                makeCell(finalCat === "Mare" ? "" : "X", { size: 16, width: COL_NU, align: AlignmentType.CENTER }),
+                                makeCell("", { size: 16, width: COL_OBS }),
+                            ]
+                        }),
+
+                        // Final conclusion
+                        new TableRow({
+                            children: [
+                                makeMultiCell([
+                                    { text: "CONCLUZIE: ", bold: true, size: 16 },
+                                    { text: `Solicitantul se incadreaza in categoria `, size: 16 },
+                                    { text: catMap[finalCat] || finalCat, bold: true, size: 16 },
+                                    { text: `, conform Legii 346/2004, cu respectarea regulii celor 2 ani consecutivi.`, size: 16 },
+                                ], { colspan: 4, shading: SHADE_HEADER }),
+                            ]
+                        }),
+                    ];
+
+                    const checklistTable = new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: checklistRows,
+                    });
+
+                    // ═══ TABLE 3 — Signatures ═══
+                    const signatureTable = new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    makeCell("Intocmit", { bold: true, size: 16, align: AlignmentType.CENTER, colspan: 2 }),
+                                ]
+                            }),
+                            new TableRow({
+                                children: [
+                                    makeCell("Nume evaluator:", { bold: true, size: 16 }),
+                                    makeCell(docxData.evaluatorName || "", { size: 16 }),
+                                ]
+                            }),
+                            new TableRow({
+                                children: [
+                                    makeCell("Semnatura:", { bold: true, size: 16 }),
+                                    makeCell("", { size: 16 }),
+                                ]
+                            }),
+                            new TableRow({
+                                children: [
+                                    makeCell("Data:", { bold: true, size: 16 }),
+                                    makeCell(docxData.evaluationDate || "", { size: 16 }),
+                                ]
+                            }),
+                        ]
+                    });
+
+                    // ═══ Annex paragraphs ═══
+                    const annexTitle = new Paragraph({
+                        children: [new TextRun({ text: "Anexa la LISTA DE VERIFICARE privind tipul intreprinderii", bold: true, size: 22, font: "Arial" })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { before: 400, after: 200 },
+                    });
+
+                    const annexSubtitle = new Paragraph({
+                        children: [new TextRun({ text: "Considerente cu privire la calculul datelor unei intreprinderi", bold: true, size: 20, font: "Arial" })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 200 },
+                    });
+
+                    const annexTexts = [
+                        "Intreprinderea autonoma - este intreprinderea care nu este nici partenera, nici legata cu alta intreprindere.",
+                        "Intreprinderile partenere - sunt intreprinderile care nu sunt intreprinderi legate si intre care exista urmatoarea relatie: intreprinderea detine intre 25% si 50% din capitalul social sau din drepturile de vot ale altei intreprinderi, si/sau o alta intreprindere detine intre 25% si 50% din capitalul social sau din drepturile de vot ale intreprinderii solicitante.",
+                        "Intreprinderile legate - sunt intreprinderile intre care exista oricare dintre urmatoarele raporturi: a) o intreprindere detine majoritatea drepturilor de vot ale actionarilor sau ale asociatilor celeilalte intreprinderi; b) o intreprindere are dreptul de a numi sau de a revoca majoritatea membrilor organului de administrare, de conducere sau de supraveghere al celeilalte intreprinderi; c) o intreprindere are dreptul de a exercita o influenta dominanta asupra celeilalte intreprinderi, in temeiul unui contract incheiat cu aceasta intreprindere sau al unei prevederi din actul constitutiv sau din statut; d) o intreprindere care este actionar sau asociat al celeilalte intreprinderi controleaza singura, in baza unui acord incheiat cu alti actionari sau asociati ai acelei intreprinderi, majoritatea drepturilor de vot ale actionarilor sau asociatilor intreprinderii respective.",
+                        "Intreprinderile care intretin oricare dintre relatiile de mai sus prin intermediul uneia sau mai multor intreprinderi sau al oricaruia dintre investitorii enumerati in art.4 alin.2 din Legea nr. 346/2004 sunt considerate intreprinderi legate.",
+                        "Intreprinderile intre care fiecare dintre relatiile de mai sus se realizeaza prin intermediul unei persoane fizice sau al unui grup de persoane fizice care actioneaza de comun acord sunt considerate intreprinderi legate, daca isi desfasoara activitatea sau o parte din activitate pe aceeasi piata relevanta sau pe piete adiacente.",
+                    ];
+
+                    const annexParagraphs = annexTexts.map(txt => new Paragraph({
+                        children: [new TextRun({ text: txt, size: 16, font: "Arial" })],
+                        spacing: { before: 100, after: 100 },
+                    }));
+
+                    const formCode = new Paragraph({
+                        children: [new TextRun({ text: "F-PO-DGPDDTJ.93.19", size: 14, font: "Arial", color: "888888" })],
+                        alignment: AlignmentType.RIGHT,
+                        spacing: { before: 200 },
+                    });
+
+                    // ═══ Assemble Document ═══
+                    const doc = new Document({
+                        sections: [{
+                            properties: {
+                                page: {
+                                    size: { width: convertInchesToTwip(11.69), height: convertInchesToTwip(8.27) },
+                                    margin: { top: convertInchesToTwip(0.5), bottom: convertInchesToTwip(0.5), left: convertInchesToTwip(0.6), right: convertInchesToTwip(0.6) },
+                                },
+                            },
+                            children: [
+                                headerTable,
+                                new Paragraph({ spacing: { before: 100, after: 100 } }),
+                                projectInfoTable,
+                                titlePara1,
+                                titlePara2,
+                                titlePara3,
+                                checklistTable,
+                                new Paragraph({ spacing: { before: 200, after: 200 } }),
+                                signatureTable,
+                                annexTitle,
+                                annexSubtitle,
+                                ...annexParagraphs,
+                                formCode,
+                            ]
+                        }]
+                    });
+
+                    // Generate and download
+                    const blob = await Packer.toBlob(doc);
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Lista_Verificare_IMM_${company.name || 'Firma'}_${new Date().toISOString().split('T')[0]}.docx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    console.error("DOCX download error:", err);
+                    alert("Eroare la generarea documentului DOCX: " + err.message);
                 }
             };
 
@@ -1292,6 +1911,157 @@
                                         </div>
                                         <button onClick={downloadExcel} className="w-full md:w-auto px-6 py-3 bg-blueCustom text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-blueCustom/20 group">
                                             Descarcă Excel (.xlsx)
+                                            <span className="transform group-hover:translate-y-1 transition-transform">↓</span>
+                                        </button>
+                                    </div>
+                                </Card>
+
+                                <Card className="bg-gradient-to-br from-greenDim to-transparent border-greenBorder/30">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="font-bold text-greenCustom flex items-center gap-2">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
+                                            Lista de Verificare (DOCX)
+                                        </h3>
+                                        <Badge color="green">F-PO-DGPDDTJ.93.19</Badge>
+                                    </div>
+                                    <p className="text-xs text-textDim leading-relaxed mb-5">
+                                        Completati datele suplimentare necesare pentru generarea automata a Listei de Verificare privind tipul intreprinderii.
+                                        Clasificarea IMM se completeaza automat din analiza de mai sus.
+                                    </p>
+
+                                    {/* Date proiect */}
+                                    <CollapsibleSection title="Date proiect" icon="📋" isOpen={docxSectionsOpen.project} onToggle={() => toggleDocxSection('project')}>
+                                        {/* Import projects database */}
+                                        <div className="mb-4 p-3 bg-cardAlt/50 rounded-lg border border-border/50">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div className="flex-1 min-w-[200px]">
+                                                    <div className="text-[10px] font-bold text-accent uppercase tracking-wider mb-1">Baza de proiecte</div>
+                                                    <p className="text-[11px] text-textDim leading-relaxed">
+                                                        {projectsDB.length > 0
+                                                            ? <><span className="text-greenCustom font-bold">{projectsDB.length}</span> proiecte incarcate. Datele se completeaza automat dupa numele solicitantului.</>
+                                                            : <>Importati fisierul Excel cu lista proiectelor pentru auto-completare.</>
+                                                        }
+                                                    </p>
+                                                </div>
+                                                <label className="cursor-pointer px-4 py-2 bg-accentDim border border-accentBorder text-accent text-xs font-bold rounded-lg hover:bg-accent/20 transition-colors flex items-center gap-2">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                                                    {projectsDB.length > 0 ? "Reimporta" : "Importa"} Excel proiecte
+                                                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={importProjectsExcel} />
+                                                </label>
+                                            </div>
+                                            {docxData.projectTitle && projectsDB.length > 0 && (
+                                                <div className="mt-2 px-2 py-1.5 bg-greenDim/30 rounded-md border border-greenBorder/30 text-[10px] text-greenCustom flex items-center gap-1.5">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5" /></svg>
+                                                    Proiect gasit automat pentru "{company.name}"
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-3 flex-wrap">
+                                            <TextInput label="Titlu Proiect" value={docxData.projectTitle} onChange={v => updateDocxData("projectTitle", v)} placeholder="Titlul proiectului..." />
+                                            <TextInput label="Cod SMIS" value={docxData.smisCode} onChange={v => updateDocxData("smisCode", v)} placeholder="351865" />
+                                        </div>
+                                        <div className="flex gap-3 flex-wrap mt-3">
+                                            <TextInput label="Nr. Cerere finantare" value={docxData.financingRequestNumber} onChange={v => updateDocxData("financingRequestNumber", v)} placeholder="2025PTJEV000007" />
+                                            <TextInput label="Data Cerere finantare" value={docxData.financingRequestDate} onChange={v => updateDocxData("financingRequestDate", v)} placeholder="04.08.2025" />
+                                        </div>
+                                    </CollapsibleSection>
+
+                                    {/* Analiza actionariat */}
+                                    <CollapsibleSection title="Analiza actionariat" icon="👥" isOpen={docxSectionsOpen.shareholders} onToggle={() => toggleDocxSection('shareholders')}>
+                                        <DaNuToggle
+                                            label="1. Exista persoane juridice asociate/actionare care creeaza o relatie de intreprindere partenera sau legata?"
+                                            value={docxData.hasLegalPersonShareholders}
+                                            onChange={v => updateDocxData("hasLegalPersonShareholders", v)}
+                                            observation={docxData.observations.legalPerson}
+                                            onObservationChange={v => updateObservation("legalPerson", v)}
+                                        />
+                                        <DaNuToggle
+                                            label="1.1. Datele din Declaratia IMM sunt corect calculate?"
+                                            value={docxData.isCalculationCorrect}
+                                            onChange={v => updateDocxData("isCalculationCorrect", v)}
+                                            observation={docxData.observations.calcCorrect}
+                                            onObservationChange={v => updateObservation("calcCorrect", v)}
+                                        />
+                                        <DaNuToggle
+                                            label="2. Exista persoane fizice care, prin participatii sau drepturi de vot, creeaza o relatie de parteneriat/legatura cu alta intreprindere?"
+                                            value={docxData.hasNaturalPersonRelationships}
+                                            onChange={v => updateDocxData("hasNaturalPersonRelationships", v)}
+                                            observation={docxData.observations.naturalPerson}
+                                            onObservationChange={v => updateObservation("naturalPerson", v)}
+                                        />
+                                        <DaNuToggle
+                                            label="2.1. Datele privind legaturile prin persoane fizice sunt corect calculate?"
+                                            value={docxData.isNaturalPersonCalculationCorrect}
+                                            onChange={v => updateDocxData("isNaturalPersonCalculationCorrect", v)}
+                                            observation={docxData.observations.naturalCalcCorrect}
+                                            onObservationChange={v => updateObservation("naturalCalcCorrect", v)}
+                                        />
+                                    </CollapsibleSection>
+
+                                    {/* Analiza guvernanta */}
+                                    <CollapsibleSection title="Analiza guvernanta" icon="🏛" isOpen={docxSectionsOpen.governance} onToggle={() => toggleDocxSection('governance')}>
+                                        <DaNuToggle
+                                            label="2.1. Majoritatea membrilor organului de administrare sunt numiti/revocati de o alta intreprindere?"
+                                            value={docxData.hasBoardMajorityAppointed}
+                                            onChange={v => updateDocxData("hasBoardMajorityAppointed", v)}
+                                            observation={docxData.observations.boardMajority}
+                                            onObservationChange={v => updateObservation("boardMajority", v)}
+                                        />
+                                        <DaNuToggle
+                                            label="2.2. Un actionar/asociat unic controleaza singur majoritatea drepturilor de vot?"
+                                            value={docxData.hasSingleShareholderControl}
+                                            onChange={v => updateDocxData("hasSingleShareholderControl", v)}
+                                            observation={docxData.observations.shareholderControl}
+                                            onObservationChange={v => updateObservation("shareholderControl", v)}
+                                        />
+                                    </CollapsibleSection>
+
+                                    {/* Analiza dependenta piata */}
+                                    <CollapsibleSection title="Analiza dependenta piata" icon="📊" isOpen={docxSectionsOpen.market} onToggle={() => toggleDocxSection('market')}>
+                                        <DaNuToggle
+                                            label="3.1. Exista un client cu pozitie dominanta (peste 50% din cifra de afaceri)?"
+                                            value={docxData.hasDominantClient}
+                                            onChange={v => updateDocxData("hasDominantClient", v)}
+                                            observation={docxData.observations.dominantClient}
+                                            onObservationChange={v => updateObservation("dominantClient", v)}
+                                        />
+                                        <DaNuToggle
+                                            label="3.2. Exista un furnizor cu pozitie dominanta (peste 50% din costuri)?"
+                                            value={docxData.hasDependentSupplier}
+                                            onChange={v => updateDocxData("hasDependentSupplier", v)}
+                                            observation={docxData.observations.dependentSupplier}
+                                            onObservationChange={v => updateObservation("dependentSupplier", v)}
+                                        />
+                                    </CollapsibleSection>
+
+                                    {/* Date evaluator */}
+                                    <CollapsibleSection title="Date evaluator" icon="✍" isOpen={docxSectionsOpen.evaluator} onToggle={() => toggleDocxSection('evaluator')}>
+                                        <div className="flex gap-3 flex-wrap">
+                                            <TextInput label="Nume evaluator" value={docxData.evaluatorName} onChange={v => updateDocxData("evaluatorName", v)} placeholder="Nume Prenume" />
+                                            <TextInput label="Data evaluarii" value={docxData.evaluationDate} onChange={v => updateDocxData("evaluationDate", v)} placeholder="2025-01-15" />
+                                        </div>
+                                    </CollapsibleSection>
+
+                                    {/* Auto-filled preview */}
+                                    <div className="mt-4 p-3 bg-cardAlt/50 rounded-lg border border-border/50">
+                                        <div className="text-[10px] font-bold text-greenCustom/70 uppercase tracking-wider mb-2">Completate automat din analiza</div>
+                                        <div className="flex flex-wrap gap-3 text-xs text-textDim">
+                                            <span>Clasificare: <strong className="text-text">{classification === "autonomous" ? "Autonoma" : classification === "partner" ? "Partenera" : "Legata"}</strong></span>
+                                            <span>|</span>
+                                            <span>Incadrare: <strong className="text-text">{calculations.finalCategory}</strong></span>
+                                            <span>|</span>
+                                            <span>Solicitant: <strong className="text-text">{company.name || "—"}</strong></span>
+                                            <span>|</span>
+                                            <span>CUI: <strong className="text-text">{company.cui || "—"}</strong></span>
+                                        </div>
+                                    </div>
+
+                                    {/* Download button */}
+                                    <div className="mt-5 flex justify-end">
+                                        <button onClick={downloadDocx} className="px-6 py-3 bg-greenCustom text-white font-bold rounded-xl flex items-center gap-2 hover:bg-green-600 transition-all shadow-lg shadow-greenCustom/20 group">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                                            Descarca Lista de Verificare (.docx)
                                             <span className="transform group-hover:translate-y-1 transition-transform">↓</span>
                                         </button>
                                     </div>
