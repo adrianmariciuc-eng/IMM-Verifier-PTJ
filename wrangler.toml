@@ -1,0 +1,7 @@
+name = "imm-verifier-ptj"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "imm-verifier-auth"
+database_id = "5c9cd585-b83c-4e0c-8560-d61df72a79b6"

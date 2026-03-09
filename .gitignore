@@ -4,3 +4,7 @@ Situatii /
 template.xlsx
 template_b64.txt
 test_pdf.html
+.wrangler/
+node_modules/
+server.py
+server.rb
